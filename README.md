@@ -59,6 +59,8 @@ You can also use the `-i` option to view video information, skip download.
 > 
 > `$ annie 'https://...'`
 
+Annie does not support selecting specific video format to download, Annie will download the highest quality video that can be obtained.
+
 ### Download anything else
 
 If you already got the URL of the exact resource you want, you can download it directly:
@@ -205,7 +207,7 @@ Site | URL | 🎬 Videos | 🌁 Images | 📚 Playlist
 半次元 | <https://bcy.net> | | ✓ | |
 pixivision | <https://www.pixivision.net> | | ✓ | |
 优酷 | <https://www.youku.com> | ✓ | | |
-YouTube | <https://www.youtube.com> | ✓ | | |
+YouTube | <https://www.youtube.com> | ✓ | | ✓ |
 爱奇艺 | <https://www.iqiyi.com> | ✓ | | |
 芒果TV | <https://www.mgtv.com> | ✓ | | |
 Tumblr | <https://www.tumblr.com> | ✓ | ✓ | |
