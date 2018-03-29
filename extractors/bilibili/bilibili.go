@@ -1,4 +1,4 @@
-package extractors
+package bilibili
 
 import (
 	"encoding/json"
@@ -103,8 +103,8 @@ func getMultiPageData(html string) (multiPage, error) {
 	return data, nil
 }
 
-// Bilibili download function
-func Bilibili(url string) {
+// Download bilibili main download function
+func Download(url string) {
 	var options bilibiliOptions
 	if strings.Contains(url, "bangumi") {
 		options.Bangumi = true
@@ -195,14 +195,19 @@ func bilibiliDownload(url string, options bilibiliOptions) downloader.VideoData 
 	}
 
 	urls, size := genURL(dataDict.DURL)
-	data := downloader.VideoData{
+	format := map[string]downloader.FormatData{
+		"default": downloader.FormatData{
+			URLs:    urls,
+			Size:    size,
+			Quality: quality[dataDict.Quality],
+		},
+	}
+	extractedData := downloader.VideoData{
 		Site:    "哔哩哔哩 bilibili.com",
 		Title:   title,
-		URLs:    urls,
 		Type:    "video",
-		Size:    size,
-		Quality: quality[dataDict.Quality],
+		Formats: format,
 	}
-	data.Download(url)
-	return data
+	extractedData.Download(url)
+	return extractedData
 }

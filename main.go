@@ -3,10 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"net/url"
+	"os"
 
 	"github.com/iawia002/annie/config"
 	"github.com/iawia002/annie/extractors"
+	"github.com/iawia002/annie/extractors/bilibili"
+	"github.com/iawia002/annie/extractors/youtube"
 	"github.com/iawia002/annie/utils"
 )
 
@@ -19,26 +23,31 @@ func init() {
 	flag.StringVar(&config.Refer, "r", "", "Use specified Referrer")
 	flag.StringVar(&config.Proxy, "x", "", "HTTP proxy")
 	flag.StringVar(&config.Socks5Proxy, "s", "", "SOCKS5 proxy")
+	flag.StringVar(&config.Format, "f", "", "Select specific format to download")
+	flag.StringVar(&config.OutputPath, "o", "", "Specify the output path")
+	flag.StringVar(&config.OutputName, "O", "", "Specify the output file name")
 }
 
 func main() {
 	flag.Parse()
 	args := flag.Args()
 	if config.Version {
-		fmt.Printf(
-			"annie: version %s, A simple and clean video downloader.\n", config.VERSION,
-		)
+		utils.PrintVersion()
 		return
 	}
+	if config.Debug {
+		utils.PrintVersion()
+	}
 	if len(args) < 1 {
-		fmt.Println("error")
+		fmt.Printf("Too few arguments \n")
+		fmt.Printf("Usage of %s: \n", os.Args[0])
+		flag.PrintDefaults()
 		return
 	}
 	videoURL := args[0]
 	u, err := url.ParseRequestURI(videoURL)
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Fatal(err)
 	}
 
 	domain := utils.Domain(u.Host)
@@ -46,7 +55,7 @@ func main() {
 	case "douyin":
 		extractors.Douyin(videoURL)
 	case "bilibili":
-		extractors.Bilibili(videoURL)
+		bilibili.Download(videoURL)
 	case "bcy":
 		extractors.Bcy(videoURL)
 	case "pixivision":
@@ -54,7 +63,7 @@ func main() {
 	case "youku":
 		extractors.Youku(videoURL)
 	case "youtube", "youtu": // youtu.be
-		extractors.Youtube(videoURL)
+		youtube.Download(videoURL)
 	case "iqiyi":
 		extractors.Iqiyi(videoURL)
 	case "mgtv":
@@ -63,6 +72,10 @@ func main() {
 		extractors.Tumblr(videoURL)
 	case "vimeo":
 		extractors.Vimeo(videoURL)
+	case "facebook":
+		extractors.Facebook(videoURL)
+	case "douyu":
+		extractors.Douyu(videoURL)
 	default:
 		extractors.Universal(videoURL)
 	}

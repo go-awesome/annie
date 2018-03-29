@@ -3,12 +3,17 @@ package utils
 import (
 	"crypto/md5"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
 
+	"github.com/fatih/color"
+
+	"github.com/iawia002/annie/config"
 	"github.com/iawia002/annie/request"
 )
 
@@ -36,12 +41,12 @@ func MatchAll(text, pattern string) [][]string {
 }
 
 // FileSize return the file size of the specified path file
-func FileSize(filePath string) int64 {
+func FileSize(filePath string) (int64, bool) {
 	file, err := os.Stat(filePath)
 	if err != nil && os.IsNotExist(err) {
-		return 0
+		return 0, false
 	}
-	return file.Size()
+	return file.Size(), true
 }
 
 // Domain get the domain of given URL
@@ -57,28 +62,30 @@ func Domain(url string) string {
 // FileName Converts a string to a valid filename
 func FileName(name string) string {
 	// FIXME(iawia002) file name can't have /
-	name = strings.Replace(name, "/", " ", -1)
-	name = strings.Replace(name, "|", "-", -1)
-	name = strings.Replace(name, ": ", "：", -1)
-	name = strings.Replace(name, ":", "：", -1)
+	rep := strings.NewReplacer("/", " ", "|", "-", ": ", "：", ":", "：")
+	name = rep.Replace(name)
 	if runtime.GOOS == "windows" {
-		winSymbols := []string{
-			"\"", "?", "*", "\\", "<", ">",
-		}
-		for _, symbol := range winSymbols {
-			name = strings.Replace(name, symbol, " ", -1)
-		}
+		rep = strings.NewReplacer("\"", " ", "?", " ", "*", " ", "\\", " ", "<", " ", ">", " ")
+		name = rep.Replace(name)
 	}
 	return name
 }
 
-// FilePath gen valid filename
+// FilePath gen valid file path
 func FilePath(name, ext string, escape bool) string {
+	var outputPath string
+	if config.OutputPath != "" {
+		_, err := os.Stat(config.OutputPath)
+		if err != nil && os.IsNotExist(err) {
+			log.Fatal(err)
+		}
+	}
 	fileName := fmt.Sprintf("%s.%s", name, ext)
 	if escape {
 		fileName = FileName(fileName)
 	}
-	return fileName
+	outputPath = filepath.Join(config.OutputPath, fileName)
+	return outputPath
 }
 
 // StringInSlice if a string is in the list
@@ -133,4 +140,15 @@ func M3u8URLs(uri string) []string {
 		}
 	}
 	return urls
+}
+
+// PrintVersion print version information
+func PrintVersion() {
+	blue := color.New(color.FgBlue)
+	cyan := color.New(color.FgCyan)
+	fmt.Printf(
+		"\n%s: version %s, A fast, simple and clean video downloader.\n\n",
+		cyan.Sprintf("annie"),
+		blue.Sprintf(config.VERSION),
+	)
 }

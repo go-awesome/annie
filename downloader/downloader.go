@@ -1,6 +1,7 @@
 package downloader
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"log"
@@ -25,38 +26,26 @@ type URLData struct {
 	Ext  string
 }
 
-// VideoData data struct of video info
-type VideoData struct {
-	Site  string
-	Title string
+// FormatData data struct of every format
+type FormatData struct {
 	// [URLData: {URL, Size, Ext}, ...]
 	// Some video files have multiple fragments
 	// and support for downloading multiple image files at once
 	URLs    []URLData
-	Size    int64
-	Type    string
 	Quality string
+	Size    int64 // total size of all urls
 }
 
-func (data VideoData) printInfo() {
-	cyan := color.New(color.FgCyan)
-	fmt.Println()
-	cyan.Printf("   Site:   ")
-	fmt.Println(data.Site)
-	cyan.Printf("  Title:   ")
-	fmt.Println(data.Title)
-	cyan.Printf("   Type:   ")
-	fmt.Println(data.Type)
-	if data.Quality != "" {
-		cyan.Printf("Quality:   ")
-		fmt.Println(data.Quality)
-	}
-	cyan.Printf("   Size:   ")
-	fmt.Printf("%.2f MiB (%d Bytes)\n", float64(data.Size)/(1024*1024), data.Size)
-	fmt.Println()
+// VideoData data struct of video info
+type VideoData struct {
+	Site  string
+	Title string
+	Type  string
+	// each format has it's own URLs and Quality
+	Formats map[string]FormatData
 }
 
-func (data *VideoData) calculateTotalSize() {
+func (data *FormatData) calculateTotalSize() {
 	var size int64
 	for _, urlData := range data.URLs {
 		size += urlData.Size
@@ -65,19 +54,29 @@ func (data *VideoData) calculateTotalSize() {
 }
 
 // urlSave save url file
-func (data VideoData) urlSave(
+func (data FormatData) urlSave(
 	urlData URLData, refer, fileName string, bar *pb.ProgressBar,
 ) {
 	filePath := utils.FilePath(fileName, urlData.Ext, false)
-	fileSize := utils.FileSize(filePath)
+	fileSize, exists := utils.FileSize(filePath)
 	// TODO: Live video URLs will not return the size
 	if fileSize == urlData.Size {
 		fmt.Printf("%s: file already exists, skipping\n", filePath)
 		bar.Add64(fileSize)
 		return
 	}
+	if exists && fileSize != urlData.Size {
+		// files with the same name but different size
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Printf("%s: file already exists, overwriting? [y/n]", filePath)
+		overwriting, _ := reader.ReadString('\n')
+		overwriting = strings.Replace(overwriting, "\n", "", -1)
+		if overwriting != "y" {
+			return
+		}
+	}
 	tempFilePath := filePath + ".download"
-	tempFileSize := utils.FileSize(tempFilePath)
+	tempFileSize, _ := utils.FileSize(tempFilePath)
 	headers := map[string]string{
 		"Referer": refer,
 	}
@@ -118,12 +117,67 @@ func (data VideoData) urlSave(
 	}
 }
 
-// Download download urls
-func (data VideoData) Download(refer string) {
+func printStream(k string, data FormatData) {
+	blue := color.New(color.FgBlue)
+	cyan := color.New(color.FgCyan)
+	blue.Println(fmt.Sprintf("     [%s]  -------------------", k))
+	if data.Quality != "" {
+		cyan.Printf("     Quality:         ")
+		fmt.Println(data.Quality)
+	}
+	cyan.Printf("     Size:            ")
 	if data.Size == 0 {
 		data.calculateTotalSize()
 	}
-	data.printInfo()
+	fmt.Printf("%.2f MiB (%d Bytes)\n", float64(data.Size)/(1024*1024), data.Size)
+	cyan.Printf("     # download with: ")
+	fmt.Println("annie -f " + k + " \"URL\"")
+	fmt.Println()
+}
+
+func (v VideoData) printInfo(format string) {
+	cyan := color.New(color.FgCyan)
+	fmt.Println()
+	cyan.Printf(" Site:      ")
+	fmt.Println(v.Site)
+	cyan.Printf(" Title:     ")
+	fmt.Println(v.Title)
+	cyan.Printf(" Type:      ")
+	fmt.Println(v.Type)
+	if config.InfoOnly {
+		cyan.Printf(" Streams:   ")
+		fmt.Println("# All available quality")
+		for k, data := range v.Formats {
+			printStream(k, data)
+		}
+	} else {
+		cyan.Printf(" Stream:   ")
+		fmt.Println()
+		printStream(format, v.Formats[format])
+	}
+}
+
+// Download download urls
+func (v VideoData) Download(refer string) {
+	var format, title string
+	if config.OutputName == "" {
+		title = v.Title
+	} else {
+		title = utils.FileName(config.OutputName)
+	}
+	if config.Format == "" {
+		format = "default"
+	} else {
+		format = config.Format
+	}
+	data, ok := v.Formats[format]
+	if !ok {
+		log.Fatal("No format named " + format)
+	}
+	if data.Size == 0 {
+		data.calculateTotalSize()
+	}
+	v.printInfo(format)
 	if config.InfoOnly {
 		return
 	}
@@ -134,14 +188,14 @@ func (data VideoData) Download(refer string) {
 	bar.Start()
 	if len(data.URLs) == 1 {
 		// only one fragment
-		data.urlSave(data.URLs[0], refer, data.Title, bar)
+		data.urlSave(data.URLs[0], refer, title, bar)
 		bar.Finish()
 	} else {
 		var wg sync.WaitGroup
 		// multiple fragments
 		parts := []string{}
 		for index, url := range data.URLs {
-			partFileName := fmt.Sprintf("%s[%d]", data.Title, index)
+			partFileName := fmt.Sprintf("%s[%d]", title, index)
 			partFilePath := utils.FilePath(partFileName, url.Ext, false)
 			parts = append(parts, partFilePath)
 			if strings.Contains(refer, "mgtv") {
@@ -158,18 +212,18 @@ func (data VideoData) Download(refer string) {
 		wg.Wait()
 		bar.Finish()
 
-		if data.Type != "video" {
+		if v.Type != "video" {
 			return
 		}
 		// merge
 		// write ffmpeg input file list
-		mergeFile := data.Title + "-merge.txt"
+		mergeFile := title + ".txt" // merge list file should be in the current directory
 		file, _ := os.Create(mergeFile)
 		for _, part := range parts {
 			file.Write([]byte(fmt.Sprintf("file '%s'\n", part)))
 		}
 
-		filePath := utils.FilePath(data.Title, "mp4", false)
+		filePath := utils.FilePath(title, "mp4", false)
 		fmt.Printf("Merging video parts into %s\n", filePath)
 		cmd := exec.Command(
 			"ffmpeg", "-y", "-f", "concat", "-safe", "-1",
